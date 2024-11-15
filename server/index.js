@@ -28,10 +28,9 @@ async function runLighthouse(url) {
     }
 }
 
+
 app.get('/api/analyze', async (req, res) => {
     const domain = req.query.domain;
-
-    console.log('Analyzing domain:', domain);
 
     if (!domain) {
         return res.status(400).json({ error: 'Domain is required' });
@@ -55,56 +54,36 @@ app.get('/api/analyze', async (req, res) => {
                 socket.end();
             });
 
-            socket.on('error', (err) => {
+            socket.on('error', () => {
                 resolve({ error: 'SSL Certificate Error' });
             });
         });
 
         // 3. 서버 IP 및 위치 정보 가져오기
         const ipAddress = await dns.lookup(domain);
-        const geo = geoip.lookup(ipAddress.address);
+        const geo = geoip.lookup(ipAddress.address) || {};
 
-        // 4. 안전 등급 가져오기 (예: SSL Labs API)
-        const securityGradeResponse = await axios.get('https://api.ssllabs.com/api/v3/analyze', {
-            params: {
-                host: domain,
-                all: 'done',
-            },
-        });
-        let securityGrade = 'Unknown';
-        if (
-            securityGradeResponse.data.endpoints &&
-            securityGradeResponse.data.endpoints.length > 0
-        ) {
-            securityGrade = securityGradeResponse.data.endpoints[0].grade || 'Unknown';
-        }
-
-        // 5. Lighthouse 성능 분석
-        let lighthouseResult;
-        try {
-            console.log('Starting Lighthouse analysis...');
-            lighthouseResult = await runLighthouse(domain);
-            console.log('Lighthouse analysis completed');
-        } catch (err) {
-            console.error('Lighthouse Error:', err);
-            lighthouseResult = { error: 'Lighthouse Error', details: err.message };
-        }
+        // GeoIP 데이터를 기반으로 위치 설정
+        const location = geo.ll
+            ? { country: geo.country, city: geo.city, ll: geo.ll }
+            : { country: geo.country || 'Unknown', city: geo.city || 'Unknown' };
 
         res.json({
             domainInfo,
             sslCertificate,
             serverInfo: {
                 ipAddress: ipAddress.address,
-                location: geo || 'Location not found',
+                location,
             },
-            securityGrade,
-            lighthouseResult, // Lighthouse 결과 추가
+            securityGrade: 'Unknown', // For example
+            lighthouseResult: {}, // Add lighthouse results if necessary
         });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server Error' });
     }
 });
+
 
 const PORT = 8080;
 app.listen(PORT, () => {
