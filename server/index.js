@@ -63,10 +63,28 @@ app.get('/api/analyze', async (req, res) => {
         const ipAddress = await dns.lookup(domain);
         const geo = geoip.lookup(ipAddress.address) || {};
 
+        // 4. 안전 등급 가져오기 (예: SSL Labs API)
+        const securityGradeResponse = await axios.get('https://api.ssllabs.com/api/v3/analyze', {
+            params: {
+                host: domain,
+                all: 'done',
+            },
+        });
+        let securityGrade = 'Unknown';
+        if (
+            securityGradeResponse.data.endpoints &&
+            securityGradeResponse.data.endpoints.length > 0
+        ) {
+            securityGrade = securityGradeResponse.data.endpoints[0].grade || 'Unknown';
+        }
+
         // GeoIP 데이터를 기반으로 위치 설정
         const location = geo.ll
             ? { country: geo.country, city: geo.city, ll: geo.ll }
             : { country: geo.country || 'Unknown', city: geo.city || 'Unknown' };
+
+        // 4. Lighthouse 실행
+        const lighthouseResult = await runLighthouse(domain);
 
         res.json({
             domainInfo,
@@ -75,8 +93,8 @@ app.get('/api/analyze', async (req, res) => {
                 ipAddress: ipAddress.address,
                 location,
             },
-            securityGrade: 'Unknown', // For example
-            lighthouseResult: {}, // Add lighthouse results if necessary
+            securityGrade,
+            lighthouseResult: lighthouseResult, // Add lighthouse results if necessary
         });
     } catch (err) {
         console.error(err);
